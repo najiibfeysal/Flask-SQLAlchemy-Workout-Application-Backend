@@ -1,43 +1,84 @@
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import validates
+from sqlalchemy import CheckConstraint, UniqueConstraint
 
-db = SQLAlchemy
+db = SQLAlchemy()
 
 class Exercise(db.Model):
     __tablename__ = "exercises"
 
-    id = db.Column(db.Integer, Primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     category = db.Column(db.String(100), nullable=False)
-    equiment_needed = db.Column(db.Boolean, nullable=False)
+    equipment_needed = db.Column(db.Boolean, nullable=False)
 
     workout_exercises = db.relationship("WorkoutExercise", back_populates="exercise")
-
     workouts = db.relationship("Workout", secondary="workout_exercise")
+
+    @validates("name", "category")
+    def validate_text(self, key, value):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{key} cannot be empty.")
+
+        if len(value.strip()) > 100:
+            raise ValueError(f"{key} cannot exceed 100 characters.")
+
+        return value.strip()
+
+    @validates("equipment_needed")
+    def validate_equipment(self, key, value):
+        if not isinstance(value, bool):
+            raise ValueError("equipment_needed must be True or False.")
+
+        return value
 
 class Workout(db.Model):
     __tablename__ = "workouts"
 
-    id = db.Column(db.Integer, Primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, nullable=False)
     duration_minutes = db.Column(db.Integer, nullable=False)
     notes = db.Column(db.Text)
 
     workout_exercises = db.relationship("WorkoutExercise", back_populates="workout", cascade="all, delete-orphan")
+    exercise = db.relationship("Exercise", secondary="workout_exercise")
 
-    exercise = db.relationship("Workout", secondary="workout_exercise")
+    __table_args__ = (
+        CheckConstraint("duration_minutes > 0", name="check_workout_duration"),
+    )
+
+    @validates("duration_minutes")
+    def validate_duration(self, key, value):
+        if (not isinstance(value, int) or isinstance(value, bool) or value <= 0):
+            raise ValueError("Workout duration must be a positive integer.")
+        
+        return value
 
 class WorkoutExercise(db.Model):
     __tablename__ = "workout_exercise"
 
-    id = db.Column(db.Integer, Primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
 
     workout_id = db.Column(db.Integer, db.ForeignKey("workouts.id"), nullable=False)
     exercise_id = db.Column(db.Integer, db.ForeignKey("exercises.id"), nullable=False)
 
     reps = db.Column(db.Integer)
     sets = db.Column(db.Integer)
-    durations_seconds = db.Column(db.Integer)
+    duration_seconds = db.Column(db.Integer)
 
-    workout = db.relationship("Workout", back_populates="workout_exercise")
+    workout = db.relationship("Workout", back_populates="workout_exercises")
+    exercise = db.relationship("Exercise", back_populates="workout_exercises")
 
-    exercise = db.relationship("Exercise", back_populates="workout_exercise")
+    __table_args__ = (
+        UniqueConstraint("workout_id", "exercise_id", name="unique_workout_exercise"),
+        CheckConstraint("reps IS NULL OR reps > 0", name="check_positive_reps"),
+        CheckConstraint("sets IS NULL OR sets > 0", name="check_positive_sets"),
+        CheckConstraint("duration_seconds IS NULL OR duration_seconds > 0", name="check_positive_duration")
+    )
+
+    @validates("reps", "sets", "duration_seconds")
+    def validate_positive_values(self, key, value):
+        if value is not None:
+            if(not isinstance(value, int) or isinstance(value, bool) or value <= 0):
+                raise ValueError(f"{key} must be a positive integer.")
+        return value
