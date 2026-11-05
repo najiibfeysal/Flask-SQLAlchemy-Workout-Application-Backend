@@ -3,7 +3,6 @@ from sqlalchemy.orm import validates
 from sqlalchemy import CheckConstraint, UniqueConstraint
 
 db = SQLAlchemy()
-
 class Exercise(db.Model):
     __tablename__ = "exercises"
 
@@ -12,8 +11,8 @@ class Exercise(db.Model):
     category = db.Column(db.String(100), nullable=False)
     equipment_needed = db.Column(db.Boolean, nullable=False)
 
-    workout_exercises = db.relationship("WorkoutExercise", back_populates="exercise")
-    workouts = db.relationship("Workout", secondary="workout_exercise")
+    workout_exercises = db.relationship("WorkoutExercise", back_populates="exercise", cascade="all, delete-orphan")
+    workouts = db.relationship("Workout", secondary="workout_exercise", viewonly=True)
 
     @validates("name", "category")
     def validate_text(self, key, value):
@@ -32,6 +31,7 @@ class Exercise(db.Model):
 
         return value
 
+
 class Workout(db.Model):
     __tablename__ = "workouts"
 
@@ -41,18 +41,19 @@ class Workout(db.Model):
     notes = db.Column(db.Text)
 
     workout_exercises = db.relationship("WorkoutExercise", back_populates="workout", cascade="all, delete-orphan")
-    exercise = db.relationship("Exercise", secondary="workout_exercise")
+    exercises = db.relationship("Exercise", secondary="workout_exercise", viewonly=True)
 
     __table_args__ = (
         CheckConstraint("duration_minutes > 0", name="check_workout_duration"),
-    )
+        )
 
     @validates("duration_minutes")
     def validate_duration(self, key, value):
         if (not isinstance(value, int) or isinstance(value, bool) or value <= 0):
             raise ValueError("Workout duration must be a positive integer.")
-        
+
         return value
+
 
 class WorkoutExercise(db.Model):
     __tablename__ = "workout_exercise"
@@ -67,6 +68,7 @@ class WorkoutExercise(db.Model):
     duration_seconds = db.Column(db.Integer)
 
     workout = db.relationship("Workout", back_populates="workout_exercises")
+
     exercise = db.relationship("Exercise", back_populates="workout_exercises")
 
     __table_args__ = (
@@ -79,6 +81,7 @@ class WorkoutExercise(db.Model):
     @validates("reps", "sets", "duration_seconds")
     def validate_positive_values(self, key, value):
         if value is not None:
-            if(not isinstance(value, int) or isinstance(value, bool) or value <= 0):
+            if (not isinstance(value, int) or isinstance(value, bool) or value <= 0):
                 raise ValueError(f"{key} must be a positive integer.")
+
         return value
